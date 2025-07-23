@@ -1,0 +1,73 @@
+name: Deploy Frontend (Static Web Apps)
+
+on:
+  push:
+    branches: [main]
+    paths: ['app/frontend/**', '.github/workflows/frontend.yml']
+  pull_request:
+    branches: [main]
+    paths: ['app/frontend/**']
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and Deploy
+    environment: demo
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: app/frontend/package-lock.json
+
+    - name: Install dependencies
+      working-directory: ./app/frontend
+      run: npm ci
+
+    - name: Run tests
+      working-directory: ./app/frontend
+      run: npm run test:ci
+
+    - name: Run E2E tests
+      working-directory: ./app/frontend
+      run: |
+        npm run build:test
+        npm run test:e2e:ci
+
+    - name: Build
+      working-directory: ./app/frontend
+      run: npm run build
+      env:
+        VITE_APP_VERSION: ${{ github.sha }}
+        VITE_ENVIRONMENT: demo
+        APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}
+
+    - name: Deploy to Static Web Apps
+      uses: Azure/static-web-apps-deploy@v1
+      with:
+        azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        action: "upload"
+        app_location: "app/frontend"
+        api_location: ""  # Linked Backendを使用するためAPI locationは空
+        output_location: "dist"
+        app_build_command: "npm run build"
+
+  close_pull_request:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request
+    steps:
+    - name: Close Pull Request
+      uses: Azure/static-web-apps-deploy@v1
+      with:
+        azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+        action: "close"

@@ -1,0 +1,96 @@
+name: Integration Tests and Deployment
+
+on:
+  workflow_run:
+    workflows: ["Deploy Infrastructure", "Deploy Backend API", "Deploy Frontend (Static Web Apps)"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    environment: demo
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      run: npm ci
+      working-directory: ./tests/integration
+
+    - name: Wait for deployment
+      run: |
+        echo "Waiting for services to be ready..."
+        sleep 60
+
+    - name: Run Integration Tests
+      working-directory: ./tests/integration
+      env:
+        BASE_URL: https://${{ secrets.STATIC_WEB_APP_HOSTNAME }}
+        API_BASE_URL: https://${{ secrets.STATIC_WEB_APP_HOSTNAME }}/api
+      run: |
+        npm run test:integration
+
+    - name: Run Load Tests
+      uses: azure/load-testing@v1
+      with:
+        loadTestConfigFile: 'tests/load/load-test-config.yaml'
+        loadTestResource: ${{ secrets.AZURE_LOAD_TESTING_RESOURCE }}
+        resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        env: |
+          webapp.url=https://${{ secrets.STATIC_WEB_APP_HOSTNAME }}
+
+  health-check:
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    steps:
+    - name: Application Health Check
+      run: |
+        # ヘルスチェックエンドポイントの確認
+        response=$(curl -s -o /dev/null -w "%{http_code}" https://${{ secrets.STATIC_WEB_APP_HOSTNAME }}/api/health)
+        if [ $response -eq 200 ]; then
+          echo "✅ Application is healthy"
+        else
+          echo "❌ Application health check failed with status: $response"
+          exit 1
+        fi
+
+    - name: Memory Stress Test
+      run: |
+        # ランダムメモリ消費機能のテスト
+        echo "Testing random memory consumption feature..."
+        for i in {1..5}; do
+          echo "Test $i/5"
+          response=$(curl -s -X POST https://${{ secrets.STATIC_WEB_APP_HOSTNAME }}/api/todos \
+            -H "Content-Type: application/json" \
+            -d '{"title":"Test Memory Stress '$i'","description":"Testing random memory consumption"}')
+          echo "Response: $response"
+          sleep 2
+        done
+
+  deployment-notification:
+    runs-on: ubuntu-latest
+    needs: [integration-tests, health-check]
+    if: always()
+    steps:
+    - name: Notify deployment status
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        text: |
+          🚀 Todo App Demo Deployment
+          📍 Environment: Azure Demo
+          📊 Status: ${{ job.status }}
+          🔗 URL: https://${{ secrets.STATIC_WEB_APP_HOSTNAME }}
+          🐙 Commit: ${{ github.sha }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
