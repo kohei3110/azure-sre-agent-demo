@@ -145,8 +145,8 @@ output "container_app_managed_identity_client_id" {
 output "environment_variables" {
   description = "Environment variables for application configuration"
   value = {
-    VITE_CONTAINER_APPS_URL             = "https://${azurerm_container_app.backend.ingress[0].fqdn}"
-    AZURE_COSMOS_CONNECTION_STRING      = azurerm_cosmosdb_account.main.connection_strings[0]
+    VITE_CONTAINER_APPS_URL               = "https://${azurerm_container_app.backend.ingress[0].fqdn}"
+    AZURE_COSMOS_CONNECTION_STRING        = azurerm_cosmosdb_account.main.connection_strings[0]
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
   }
   sensitive = true
