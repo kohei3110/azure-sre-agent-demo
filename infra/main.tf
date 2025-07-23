@@ -179,7 +179,7 @@ resource "azurerm_container_app" "backend" {
 
       env {
         name  = "AZURE_COSMOS_CONNECTION_STRING"
-        value = azurerm_cosmosdb_account.main.connection_strings[0]
+        value = azurerm_cosmosdb_account.main.primary_sql_connection_string
       }
 
       env {
@@ -209,7 +209,7 @@ resource "azurerm_container_app" "backend" {
 }
 
 # Create Static Web App
-resource "azurerm_static_site" "main" {
+resource "azurerm_static_web_app" "main" {
   name                = var.static_web_app_name != "" ? var.static_web_app_name : "stapp-${var.project_name}-${var.environment_name}-${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.main.name
   location            = var.location
@@ -222,12 +222,6 @@ resource "azurerm_static_site" "main" {
   }
 
   tags = local.common_tags
-}
-
-# Link Static Web App to Container App Backend
-resource "azurerm_static_site_linked_backend" "main" {
-  static_site_id = azurerm_static_site.main.id
-  backend_id     = azurerm_container_app.backend.id
 }
 
 # Create Load Testing resource
