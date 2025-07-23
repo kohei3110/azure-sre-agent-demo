@@ -1,0 +1,147 @@
+name: Deploy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform Action'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+        - plan
+        - apply
+        - destroy
+      environment:
+        description: 'Target Environment'
+        required: true
+        default: 'demo'
+        type: choice
+        options:
+        - demo
+      confirm_destroy:
+        description: 'Type "CONFIRM" to proceed with destroy'
+        required: false
+        type: string
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+jobs:
+  terraform:
+    name: "Terraform ${{ github.event.inputs.action || 'Deploy' }}"
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'demo' }}
+    
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./infra
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.5.0
+
+    - name: Terraform Format Check
+      run: terraform fmt -check
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Validate
+      run: terraform validate
+
+    - name: Terraform Plan
+      id: plan
+      run: |
+        terraform plan -var-file="environments/${{ github.event.inputs.environment || 'demo' }}.tfvars" -no-color -out=tfplan
+        terraform show -no-color tfplan
+      continue-on-error: false
+
+    - name: Terraform Apply
+      if: |
+        (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+        (github.event.inputs.action == 'apply' && github.event_name == 'workflow_dispatch')
+      run: |
+        echo "🚀 Applying Terraform changes..."
+        terraform apply -auto-approve tfplan
+
+    - name: Confirm Destroy
+      if: github.event.inputs.action == 'destroy'
+      run: |
+        if [ "${{ github.event.inputs.confirm_destroy }}" != "CONFIRM" ]; then
+          echo "❌ Destroy action requires 'CONFIRM' in the confirm_destroy input"
+          exit 1
+        fi
+        echo "⚠️  Proceeding with infrastructure destruction..."
+
+    - name: Terraform Destroy
+      if: github.event.inputs.action == 'destroy' && github.event.inputs.confirm_destroy == 'CONFIRM'
+      run: |
+        echo "🗑️ Destroying infrastructure..."
+        terraform destroy -var-file="environments/${{ github.event.inputs.environment || 'demo' }}.tfvars" -auto-approve
+
+    - name: Output Important Values
+      if: |
+        (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+        (github.event.inputs.action == 'apply' && github.event_name == 'workflow_dispatch')
+      run: |
+        echo "📋 Terraform Outputs:"
+        echo "CONTAINER_APPS_FQDN=$(terraform output -raw container_apps_fqdn)" >> $GITHUB_ENV
+        echo "STATIC_WEB_APP_HOSTNAME=$(terraform output -raw static_web_app_hostname)" >> $GITHUB_ENV
+        echo "COSMOS_DB_ENDPOINT=$(terraform output -raw cosmos_db_endpoint)" >> $GITHUB_ENV
+        
+        # 出力値をサマリーに表示
+        echo "## 🎯 Infrastructure Deployment Results" >> $GITHUB_STEP_SUMMARY
+        echo "| Resource | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Container Apps FQDN | $(terraform output -raw container_apps_fqdn) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Static Web App Hostname | $(terraform output -raw static_web_app_hostname) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Cosmos DB Endpoint | $(terraform output -raw cosmos_db_endpoint) |" >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload Terraform Plan
+      if: github.event.inputs.action == 'plan' || github.event_name == 'pull_request'
+      uses: actions/upload-artifact@v4
+      with:
+        name: terraform-plan-${{ github.event.inputs.environment || 'demo' }}
+        path: infra/tfplan
+        retention-days: 30
+
+    - name: Comment PR with Plan
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          
+          // Terraform planの結果を取得
+          const planOutput = execSync('cd infra && terraform show -no-color tfplan', { encoding: 'utf-8' });
+          
+          const comment = `## 🏗️ Terraform Plan Results
+          
+          <details>
+          <summary>📋 Click to expand plan output</summary>
+          
+          \`\`\`hcl
+          ${planOutput}
+          \`\`\`
+          </details>
+          
+          **Action Required:** Review the plan and merge to apply changes automatically.
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
