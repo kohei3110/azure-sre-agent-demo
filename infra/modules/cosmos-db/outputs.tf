@@ -13,9 +13,9 @@ output "endpoint" {
   value       = azurerm_cosmosdb_account.main.endpoint
 }
 
-output "connection_strings" {
-  description = "The connection strings for the Cosmos DB account"
-  value       = azurerm_cosmosdb_account.main.connection_strings
+output "primary_sql_connection_string" {
+  description = "The primary SQL connection string for the Cosmos DB account"
+  value       = azurerm_cosmosdb_account.main.primary_sql_connection_string
   sensitive   = true
 }
 

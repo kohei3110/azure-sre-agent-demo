@@ -12,22 +12,22 @@ output "resource_group_location" {
 # Static Web Apps outputs
 output "static_web_app_name" {
   description = "The name of the Static Web App"
-  value       = azurerm_static_site.main.name
+  value       = azurerm_static_web_app.main.name
 }
 
 output "static_web_app_hostname" {
   description = "The default hostname of the Static Web App"
-  value       = azurerm_static_site.main.default_host_name
+  value       = azurerm_static_web_app.main.default_host_name
 }
 
 output "static_web_app_url" {
   description = "The URL of the Static Web App"
-  value       = "https://${azurerm_static_site.main.default_host_name}"
+  value       = "https://${azurerm_static_web_app.main.default_host_name}"
 }
 
 output "static_web_app_api_key" {
   description = "The API key for the Static Web App"
-  value       = azurerm_static_site.main.api_key
+  value       = azurerm_static_web_app.main.api_key
   sensitive   = true
 }
 
@@ -60,7 +60,7 @@ output "cosmos_db_endpoint" {
 
 output "cosmos_db_connection_string" {
   description = "The connection string for the Cosmos DB account"
-  value       = azurerm_cosmosdb_account.main.connection_strings[0]
+  value       = azurerm_cosmosdb_account.main.primary_sql_connection_string
   sensitive   = true
 }
 
@@ -146,7 +146,7 @@ output "environment_variables" {
   description = "Environment variables for application configuration"
   value = {
     VITE_CONTAINER_APPS_URL               = "https://${azurerm_container_app.backend.ingress[0].fqdn}"
-    AZURE_COSMOS_CONNECTION_STRING        = azurerm_cosmosdb_account.main.connection_strings[0]
+    AZURE_COSMOS_CONNECTION_STRING        = azurerm_cosmosdb_account.main.primary_sql_connection_string
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
   }
   sensitive = true
