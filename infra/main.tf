@@ -51,7 +51,7 @@ resource "azurerm_application_insights" "main" {
 
 # Create Container Registry
 resource "azurerm_container_registry" "main" {
-  name                = var.container_registry_name != "" ? var.container_registry_name : "acr${var.project_name}${var.environment_name}${local.resource_suffix}"
+  name                = var.container_registry_name != "" ? var.container_registry_name : "acr${replace(var.project_name, "-", "")}${replace(var.environment_name, "-", "")}${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   sku                 = var.container_registry_sku
@@ -62,7 +62,7 @@ resource "azurerm_container_registry" "main" {
 
 # Create Cosmos DB Account
 resource "azurerm_cosmosdb_account" "main" {
-  name                = var.cosmos_db_account_name != "" ? var.cosmos_db_account_name : "cosmos-${var.project_name}-${var.environment_name}-${local.resource_suffix}"
+  name                = var.cosmos_db_account_name != "" ? var.cosmos_db_account_name : "cosmos-${replace(var.project_name, "_", "-")}-${replace(var.environment_name, "_", "-")}-${local.resource_suffix}"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   offer_type          = "Standard"
